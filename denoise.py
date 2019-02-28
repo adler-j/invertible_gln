@@ -1,4 +1,4 @@
-"""Unflip and denoise image using reversible network."""
+"""Denoise image using reversible network."""
 
 import argparse
 import torch
@@ -7,10 +7,10 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torchvision import datasets, transforms
 import invertible_layers as il
-
 import matplotlib.pyplot as plt
 
-def train(args, model, device, train_loader, optimizer, epoch):
+
+def train(model, device, train_loader, optimizer, epoch):
     model.train()
 
     inverse = getattr(model, 'inverse', None)
@@ -18,8 +18,8 @@ def train(args, model, device, train_loader, optimizer, epoch):
     for batch_idx, (data, _) in enumerate(train_loader):
         data = data.to(device)
 
-        target = torch.flip(data, [3])
-        noise = 0.1 * torch.randn(data.shape).to(device)
+        target = data
+        noise = 0.5 * torch.randn(data.shape).to(device)
         data = data + noise
 
         optimizer.zero_grad()
@@ -27,10 +27,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
         if inverse is not None:
             inverted = inverse(output)
             reco_loss = F.mse_loss(inverted, data)
+
         loss = F.mse_loss(output, target)
         loss.backward()
         optimizer.step()
-        if batch_idx % args.log_interval == 0:
+        if batch_idx % 100 == 0:
             plt.figure('input')
             plt.imshow(data.detach().cpu().numpy()[0, 0])
             plt.pause(0.001)
@@ -63,48 +64,21 @@ def train(args, model, device, train_loader, optimizer, epoch):
                     100. * batch_idx / len(train_loader),
                     loss.item()))
 
-# Training settings
-parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
-parser.add_argument('--batch-size', type=int, default=64, metavar='N',
-                    help='input batch size for training (default: 64)')
-parser.add_argument('--test-batch-size', type=int, default=1000, metavar='N',
-                    help='input batch size for testing (default: 1000)')
-parser.add_argument('--epochs', type=int, default=100, metavar='N',
-                    help='number of epochs to train (default: 10)')
-parser.add_argument('--lr', type=float, default=0.01, metavar='LR',
-                    help='learning rate (default: 0.01)')
-parser.add_argument('--momentum', type=float, default=0.5, metavar='M',
-                    help='SGD momentum (default: 0.5)')
-parser.add_argument('--no-cuda', action='store_true', default=False,
-                    help='disables CUDA training')
-parser.add_argument('--seed', type=int, default=1, metavar='S',
-                    help='random seed (default: 1)')
-parser.add_argument('--log-interval', type=int, default=100, metavar='N',
-                    help='how many batches to wait before logging training status')
-
-parser.add_argument('--save-model', action='store_true', default=False,
-                    help='For Saving the current Model')
-args = parser.parse_args()
-use_cuda = not args.no_cuda and torch.cuda.is_available()
-
-torch.manual_seed(args.seed)
+use_cuda = torch.cuda.is_available()
+epochs = 100
+batch_size = 64
 
 device = torch.device("cuda" if use_cuda else "cpu")
-
 kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {}
 train_loader = torch.utils.data.DataLoader(
     datasets.MNIST('../data', train=True, download=True,
                    transform=transforms.ToTensor()),
-                   batch_size=args.batch_size, shuffle=True, **kwargs)
+                   batch_size=batch_size, shuffle=True, **kwargs)
 
 
 if 1:
     # Invertible
     model = il.Sequential(il.PixelShuffle(4),
-                          il.Conv2d(16, 3),
-                          il.LeakyReLU(0.2),
-                          il.Conv2d(16, 3),
-                          il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
                           il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
@@ -124,8 +98,5 @@ else:
 model = model.to(device)
 optimizer = optim.Adam(model.parameters())
 
-for epoch in range(1, args.epochs + 1):
-    train(args, model, device, train_loader, optimizer, epoch)
-
-if (args.save_model):
-    torch.save(model.state_dict(),"mnist_cnn.pt")
+for epoch in range(1, epochs + 1):
+    train(model, device, train_loader, optimizer, epoch)
