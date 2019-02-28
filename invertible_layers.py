@@ -3,7 +3,7 @@ import torch.nn as nn
 import numpy as np
 import scipy.io
 
-n = 'data/theta_taylor' #, 'theta_taylor_single', 'theta_taylor'
+n = 'data/theta_taylor_single'
 mat = scipy.io.loadmat(n + '.mat')
 THETA = mat['theta'].squeeze()
 
@@ -32,13 +32,16 @@ def parameters(conv):
     return mstar, s
 
 
-def exponential(conv, vec, t=1, tol=1e-16):
-    """Compute ``e^net * vec``.
+def exponential(conv, vec, t=1, tol=1e-8):
+    """Compute ``e^conv * vec``.
 
     The implementation is taken from
     "Computing the Action of the Matrix Exponential,
     with an Application to Exponential Integrators"
     Al-Mohy and Higham, 2010.
+
+    It uses a minimal number of matrix-vector products to reach the desired
+    precision level.
     """
     # Naming according to paper
     A = conv
@@ -104,6 +107,7 @@ class Conv2d(nn.Module):
 
         nn.init.xavier_normal_(self.conv.weight)
         self.conv.weight.data /= operator_one_norm(self.conv)
+        #self.conv.weight.data /= self.conv.weight.nelement()
 
     def forward(self, x):
         return exponential(self.conv, x) + self.bias

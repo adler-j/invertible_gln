@@ -102,13 +102,13 @@ if 1:
     # Invertible
     model = il.Sequential(il.PixelShuffle(4),
                           il.Conv2d(16, 3),
-                          il.LeakyReLU(0.5),
+                          il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
-                          il.LeakyReLU(0.5),
+                          il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
-                          il.LeakyReLU(0.5),
+                          il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
-                          il.LeakyReLU(0.5),
+                          il.LeakyReLU(0.2),
                           il.Conv2d(16, 3),
                           il.PixelUnShuffle(4))
 else:
