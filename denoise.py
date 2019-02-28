@@ -1,3 +1,5 @@
+"""Unflip and denoise image using reversible network."""
+
 import argparse
 import torch
 import torch.nn as nn
@@ -15,18 +17,20 @@ def train(args, model, device, train_loader, optimizer, epoch):
 
     for batch_idx, (data, _) in enumerate(train_loader):
         data = data.to(device)
-        target = data
-        data = data + 0.1 * torch.randn(data.shape).to(device)
+
+        target = torch.flip(data, [3])
+        noise = 0.1 * torch.randn(data.shape).to(device)
+        data = data + noise
+
         optimizer.zero_grad()
         output = model(data)
+        if inverse is not None:
+            inverted = inverse(output)
+            reco_loss = F.mse_loss(inverted, data)
         loss = F.mse_loss(output, target)
         loss.backward()
         optimizer.step()
         if batch_idx % args.log_interval == 0:
-            print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                epoch, batch_idx * len(data), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), loss.item()))
-
             plt.figure('input')
             plt.imshow(data.detach().cpu().numpy()[0, 0])
             plt.pause(0.001)
@@ -35,8 +39,11 @@ def train(args, model, device, train_loader, optimizer, epoch):
             plt.imshow(output.detach().cpu().numpy()[0, 0])
             plt.pause(0.001)
 
+            plt.figure('target')
+            plt.imshow(target.detach().cpu().numpy()[0, 0])
+            plt.pause(0.001)
+
             if inverse is not None:
-                inverted = inverse(output)
                 plt.figure('inverse')
                 plt.imshow(inverted.detach().cpu().numpy()[0, 0])
                 plt.pause(0.001)
@@ -45,6 +52,16 @@ def train(args, model, device, train_loader, optimizer, epoch):
                 plt.imshow((inverted - data).detach().cpu().numpy()[0, 0],
                            clim=[-1, 1], cmap='coolwarm')
                 plt.pause(0.001)
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}, reco_loss: {}'.format(
+                    epoch, batch_idx * len(data), len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader),
+                    loss.item(),
+                    reco_loss))
+            else:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch, batch_idx * len(data), len(train_loader.dataset),
+                    100. * batch_idx / len(train_loader),
+                    loss.item()))
 
 # Training settings
 parser = argparse.ArgumentParser(description='PyTorch MNIST Example')
@@ -84,6 +101,10 @@ train_loader = torch.utils.data.DataLoader(
 if 1:
     # Invertible
     model = il.Sequential(il.PixelShuffle(4),
+                          il.Conv2d(16, 3),
+                          il.LeakyReLU(0.5),
+                          il.Conv2d(16, 3),
+                          il.LeakyReLU(0.5),
                           il.Conv2d(16, 3),
                           il.LeakyReLU(0.5),
                           il.Conv2d(16, 3),
