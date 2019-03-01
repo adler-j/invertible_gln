@@ -64,7 +64,7 @@ def exponential(conv, vec, t=1, tol=1e-8, orthogonal=False):
 
 
 
-class _OrthogonalConv2d(nn.Conv2d):
+class _SkewSymmetricConv2d(nn.Conv2d):
     def forward(self, input):
         if 1:
             # Compute transpose weight
@@ -125,8 +125,8 @@ class Conv2d(nn.Module):
             self.conv = nn.Conv2d(channels, channels, kernel_size, stride=1,
                                   padding=padding, bias=False)
         else:
-            self.conv = _OrthogonalConv2d(channels, channels, kernel_size, stride=1,
-                                          padding=padding, bias=False)
+            self.conv = _SkewSymmetricConv2d(channels, channels, kernel_size, stride=1,
+                                             padding=padding, bias=False)
 
         self.bias = nn.Parameter(torch.zeros([1, channels, 1, 1]))
 
@@ -135,7 +135,7 @@ class Conv2d(nn.Module):
         #self.conv.weight.data /= self.conv.weight.nelement()
 
     def forward(self, x):
-        return exponential(self.conv, x) + self.bias
+        return exponential(self.conv, x, t=1) + self.bias
 
     @property
     def inverse(self):
@@ -143,7 +143,7 @@ class Conv2d(nn.Module):
 
         class Conv2dInverse(nn.Module):
             def forward(self, x):
-                return exponential(forward.conv, x - forward.bias, t=1)
+                return exponential(forward.conv, x - forward.bias, t=-1)
 
             @property
             def inverse(self):

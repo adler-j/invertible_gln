@@ -79,11 +79,11 @@ train_loader = torch.utils.data.DataLoader(
 if 1:
     # Invertible
     model = il.Sequential(il.PixelShuffle(4),
-                          il.Conv2d(16, 3),
+                          il.Conv2d(16, 3, orth=True),
                           il.LeakyReLU(0.2),
-                          il.Conv2d(16, 3),
+                          il.Conv2d(16, 3, orth=True),
                           il.LeakyReLU(0.2),
-                          il.Conv2d(16, 3),
+                          il.Conv2d(16, 3, orth=True),
                           il.PixelUnShuffle(4))
 else:
     # Not invertible
