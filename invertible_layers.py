@@ -12,15 +12,15 @@ def maxnorm(x):
     return torch.max(torch.abs(x))
 
 
-def operator_one_norm(conv):
+def operator_one_norm(W):
     """Operator 1-norm of a convolution."""
-    W = conv.weight
     return torch.max(torch.sum(torch.abs(W), dim=(0, 2, 3)))
 
 
-def parameters(conv):
+def parameters(conv, orthogonal):
     """Compute optimal number of taylor coefficients and scaling."""
-    nrm = operator_one_norm(conv).detach().cpu().numpy()
+    nrm = operator_one_norm(conv.weight).detach().cpu().numpy()
+
     if nrm > 15:
         print('Overflow likely, norm={}'.format(nrm))
 
@@ -32,7 +32,7 @@ def parameters(conv):
     return mstar, s
 
 
-def exponential(conv, vec, t=1, tol=1e-8):
+def exponential(conv, vec, t=1, tol=1e-8, orthogonal=False):
     """Compute ``e^conv * vec``.
 
     The implementation is taken from
@@ -47,7 +47,7 @@ def exponential(conv, vec, t=1, tol=1e-8):
     A = conv
     B = vec
 
-    mstar, s = parameters(conv)
+    mstar, s = parameters(conv, orthogonal)
 
     F = B
     for i in range(1, s + 1):
@@ -62,6 +62,24 @@ def exponential(conv, vec, t=1, tol=1e-8):
         B = F
     return F
 
+
+
+class _OrthogonalConv2d(nn.Conv2d):
+    def forward(self, input):
+        if 1:
+            # Compute transpose weight
+            weight = (self.weight -
+                      torch.flip(self.weight.transpose(0, 1), (2, 3)))
+            return nn.functional.conv2d(input, weight, self.bias, self.stride,
+                                        self.padding, self.dilation, self.groups)
+        else:
+            weight = self.weight
+            weight_transp = self.weight.transpose(0, 1)
+            return (nn.functional.conv2d(input, weight, self.bias, self.stride,
+                                         self.padding, self.dilation, self.groups)
+                    -
+                    nn.functional.conv_transpose2d(input, weight_transp, self.bias, self.stride,
+                                                   self.padding, 0, self.groups, self.dilation))
 
 class Conv2d(nn.Module):
 
@@ -93,7 +111,9 @@ class Conv2d(nn.Module):
         x = e^{-A}(y - b)
     """
 
-    def __init__(self, channels, kernel_size):
+    __constants__ = ['bias']
+
+    def __init__(self, channels, kernel_size, orth=False):
         super(Conv2d, self).__init__()
 
         if kernel_size % 2 == 0:
@@ -101,12 +121,17 @@ class Conv2d(nn.Module):
         else:
             padding = kernel_size // 2
 
-        self.conv = nn.Conv2d(channels, channels, kernel_size, stride=1,
-                              padding=padding, bias=False)
+        if not orth:
+            self.conv = nn.Conv2d(channels, channels, kernel_size, stride=1,
+                                  padding=padding, bias=False)
+        else:
+            self.conv = _OrthogonalConv2d(channels, channels, kernel_size, stride=1,
+                                          padding=padding, bias=False)
+
         self.bias = nn.Parameter(torch.zeros([1, channels, 1, 1]))
 
         nn.init.xavier_normal_(self.conv.weight)
-        self.conv.weight.data /= operator_one_norm(self.conv)
+        self.conv.weight.data /= operator_one_norm(self.conv.weight)
         #self.conv.weight.data /= self.conv.weight.nelement()
 
     def forward(self, x):
@@ -118,7 +143,7 @@ class Conv2d(nn.Module):
 
         class Conv2dInverse(nn.Module):
             def forward(self, x):
-                return exponential(forward.conv, x - forward.bias, t=-1)
+                return exponential(forward.conv, x - forward.bias, t=1)
 
             @property
             def inverse(self):
